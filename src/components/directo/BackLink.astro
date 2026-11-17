@@ -1,0 +1,38 @@
+---
+// ← direct: back to the live demo list. Each page gives you the color with `class`.
+interface Props {
+  class?: string;
+}
+
+const { class: className, ...rest } = Astro.props;
+---
+
+<a href="/directo" class:list={['back-link', className]} aria-label="Back to live demos" {...rest}>
+  <span class="arrow" aria-hidden="true">←</span>live demo
+</a>
+
+<style>
+  .back-link {
+    font-size: 0.8125rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .arrow {
+    display: inline-block;
+    margin-right: 0.35em;
+    transition: translate 0.24s steps(4, end);
+  }
+
+  .back-link:hover .arrow,
+  .back-link:focus-visible .arrow {
+    translate: -4px 0;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .arrow {
+      transition: none;
+    }
+  }
+</style>

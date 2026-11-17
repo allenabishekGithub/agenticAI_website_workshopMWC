@@ -1,0 +1,78 @@
+---
+// The live demos from the talk (Mario, Camp Nou): full screen,
+// without the header of the web. Leave the token workshop in a < meta> to call the APIs.
+import { Font } from 'astro:assets';
+import { TOKEN_DEL_TALLER } from '../data/taller';
+
+interface Props {
+  title?: string;
+  description?: string;
+  /** The Camp Nou website does not use the black theme */
+  light?: boolean;
+  icon?: string;
+}
+
+const { title = 'Live demo', description = 'Live demos from the workshop', light = false, icon = '/favicon.svg' } = Astro.props;
+---
+
+<!doctype html>
+<html lang="en" data-theme={light ? 'light' : undefined}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <Font cssVariable="--font-mono" preload />
+    <Font cssVariable="--font-pixel" preload />
+    <meta name="description" content={description} />
+    <meta name="theme-color" content={light ? '#fff' : '#000'} />
+    <meta name="token-taller" content={TOKEN_DEL_TALLER} />
+    <link rel="icon" href={icon} />
+    <title>{title}</title>
+  </head>
+  <body>
+    <slot />
+  </body>
+</html>
+
+<style is:global>
+  :root {
+    --red: #ff313c;
+    --yellow: #ffb300;
+    --teal: #00a5a1;
+    --fg: #fafafa;
+    --muted: #737373;
+    color-scheme: dark;
+  }
+
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html,
+  body {
+    margin: 0;
+    min-height: 100%;
+  }
+
+  body {
+    background: #000;
+    color: var(--fg);
+    font-family: var(--font-mono);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  [data-theme='light'] {
+    color-scheme: light;
+  }
+
+  [data-theme='light'] body {
+    background: #fff;
+    color: #111;
+  }
+
+  ::selection {
+    background: var(--red);
+    color: #000;
+  }
+</style>

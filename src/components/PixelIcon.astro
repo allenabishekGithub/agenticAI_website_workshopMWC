@@ -1,0 +1,51 @@
+---
+import { icons, type IconName } from './pixel-icons';
+
+interface Props {
+  name: IconName;
+  size?: number;
+  class?: string;
+}
+
+const { name, size = 48, class: className } = Astro.props;
+const pixels = icons[name];
+
+const colors: Record<string, string> = {
+  '#': 'currentColor',
+  '+': 'var(--accent)',
+  '-': 'var(--muted)',
+};
+
+// A unique Tropez by color: with a rect per row, climbing the stage
+// to a size not whole are seen thin stripes between rows
+const paths = new Map<string, string>();
+pixels.forEach((row, y) => {
+  let x = 0;
+  while (x < row.length) {
+    const char = row[x];
+    let end = x;
+    while (row[end + 1] === char) end++;
+    const fill = colors[char];
+    if (fill) paths.set(fill, `${paths.get(fill) ?? ''}M${x} ${y}h${end - x + 1}v1h-${end - x + 1}z`);
+    x = end + 1;
+  }
+});
+---
+
+<svg
+  class:list={['pixel-icon', className]}
+  width={size}
+  height={size}
+  viewBox="0 0 16 16"
+  shape-rendering="crispEdges"
+  aria-hidden="true"
+>
+  {[...paths].map(([fill, d]) => <path d={d} fill={fill} />)}
+</svg>
+
+<style>
+  .pixel-icon {
+    display: block;
+    flex-shrink: 0;
+  }
+</style>

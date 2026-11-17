@@ -1,0 +1,182 @@
+---
+import Base from '../../layouts/Base.astro';
+
+const reseñas = `I've been with the headphones for two months and the noise cancelling is spectacular: on the train I hear nothing.
+The battery actually lasts the 30 hours you promise, I charge them once a week.
+They are comfortable, although after three hours in a row they tighten a little and warm in summer.
+The microphone goes well in calls, but with wind it sounds terrible.
+The app is slow and sometimes loses the connection to the mobile phone.
+For this price I have found nothing better. I recommend them to travel and work in the office.`;
+---
+
+<Base title="Summarize in browser">
+  <h1>Summarize locally</h1>
+  <p id="estado" class="muted" role="status">Checking the API Summar 420.</p>
+
+  <form id="formulario">
+    <textarea name="texto" rows="8" spellcheck="false" aria-label="Text">{reseñas}</textarea>
+    <div class="opciones">
+      <label>
+        <span class="label">type</span>
+        <select name="type">
+          <option>tldr</option>
+          <option>key-points</option>
+          <option>teaser</option>
+          <option>headline</option>
+        </select>
+      </label>
+      <label>
+        <span class="label">length</span>
+        <select name="length">
+          <option>short</option>
+          <option selected>medium</option>
+          <option>long</option>
+        </select>
+      </label>
+      <button type="submit">Summarize ▸</button>
+    </div>
+  </form>
+
+  <pre id="resumen" hidden aria-live="polite"></pre>
+</Base>
+
+<style>
+  h1 {
+    font-size: clamp(2.5rem, 7vw, 4rem);
+    margin-bottom: 0.75rem;
+  }
+
+  form {
+    display: grid;
+    gap: 1rem;
+    margin-top: 2rem;
+  }
+
+  textarea,
+  select,
+  button {
+    font: inherit;
+    font-size: 0.87rem;
+    color: var(--fg);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+  }
+
+  textarea {
+    width: 100%;
+    padding: 0.85rem 1rem;
+    line-height: 1.6;
+    resize: vertical;
+  }
+
+  textarea:focus,
+  select:focus {
+    border-color: var(--muted);
+    outline: none;
+  }
+
+  .opciones {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: 1rem;
+  }
+
+  label {
+    display: grid;
+    gap: 0.2rem;
+  }
+
+  select {
+    padding: 0.35rem 0.5rem;
+  }
+
+  button {
+    margin-left: auto;
+    padding: 0.4rem 1rem;
+    cursor: pointer;
+  }
+
+  button:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  button:disabled {
+    cursor: progress;
+    color: var(--muted);
+    border-color: var(--line);
+  }
+
+  pre {
+    margin-top: 1.5rem;
+    white-space: pre-wrap;
+    font-size: 0.95rem;
+  }
+
+  .error {
+    color: var(--accent);
+  }
+</style>
+
+<script>
+  // The API Summarizer from Chrome: Gemini Nano inside the browser. Text does not leave the device.
+  declare const Summarizer: any;
+
+  const $estado = document.querySelector<HTMLElement>('#estado')!;
+  const $formulario = document.querySelector<HTMLFormElement>('#formulario')!;
+  const $boton = $formulario.querySelector('button')!;
+  const $resumen = document.querySelector<HTMLElement>('#resumen')!;
+
+  const IDIOMA = { expectedInputLanguages: ['en'], outputLanguage: 'en' };
+
+  function mostrarEstado(texto: string, error = false) {
+    $estado.textContent = texto;
+    $estado.classList.toggle('error', error);
+  }
+
+  const disponible = 'Summarizer' in self ? await Summarizer.availability(IDIOMA) : 'unavailable';
+  $boton.disabled = disponible === 'unavailable';
+  mostrarEstado(
+    {
+      available: 'Summar #240 · Gemini Nano ready',
+      downloadable: 'Summar • the model will be downloaded when you summarize',
+      downloading: 'Summar • Downloading the model.',
+      unavailable: 'Summar kerber is not available in this browser',
+    }[disponible as string] ?? disponible,
+    disponible === 'unavailable',
+  );
+
+  $formulario.addEventListener('submit', async (evento) => {
+    evento.preventDefault();
+    const datos = new FormData($formulario);
+    $boton.disabled = true;
+    $resumen.hidden = false;
+    $resumen.textContent = '';
+
+    try {
+      const inicio = performance.now();
+      const summarizer = await Summarizer.create({
+        ...IDIOMA,
+        type: datos.get('type'),
+        length: datos.get('length'),
+        format: 'plain-text',
+        monitor(m: EventTarget) {
+          m.addEventListener('downloadprogress', (e: any) => mostrarEstado(`Downloading the model. ${Math.round(e.loaded * 100)} %`));
+        },
+      });
+
+      for await (const trozo of summarizer.summarizeStreaming(String(datos.get('text')))) {
+        $resumen.textContent += trozo;
+      }
+
+      mostrarEstado(`Summarized in local in ${Math.round(performance.now() - inicio)} ms`);
+      summarizer.destroy();
+    } catch (error) {
+      mostrarEstado(error instanceof Error ? error.message : String(error), true);
+    } finally {
+      $boton.disabled = false;
+    }
+  });
+</script>

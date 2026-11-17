@@ -1,0 +1,9 @@
+# Copy this file to .dev.vars for local development and fill in the values.
+# In production: pnpm wrangler secret put <NOMBRE>
+
+# Shared token given to workshop participants, displayed on /apis and in the slides.
+WORKSHOP_TOKEN=mwc-taller-cambia-esto
+
+# Real provider keys, which never reach participants' browsers.
+OPENAI_API_KEY=sk-...
+TYPESAFE_API_KEY=...

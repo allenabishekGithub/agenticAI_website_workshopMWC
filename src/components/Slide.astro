@@ -1,0 +1,28 @@
+---
+interface Props {
+  /** slide type: content (default), block cover, phrase or full-screen image */
+  kind?: 'content' | 'section' | 'statement' | 'image' | 'reto';
+  /** Small label on title (e.g. block) */
+  label?: string;
+  title?: string;
+  /** Only for..=".." */
+  src?: string;
+  alt?: string;
+}
+
+const { kind = 'content', label, title, src, alt = '' } = Astro.props;
+---
+
+<section class:list={['slide', kind]} data-label={label}>
+  {
+    kind === 'image' ? (
+      <img src={src} alt={alt} />
+    ) : (
+      <>
+        {label && <p class="slide-label">{label}</p>}
+        {title && <h2 set:html={title} />}
+        <slot />
+      </>
+    )
+  }
+</section>

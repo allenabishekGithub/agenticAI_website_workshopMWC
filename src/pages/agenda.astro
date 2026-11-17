@@ -1,0 +1,26 @@
+---
+import Agenda from '../components/Agenda.astro';
+import Base from '../layouts/Base.astro';
+---
+
+<Base title="Agenda">
+  <p class="label">15:00 – 18:00 · 3 horas</p>
+  <h1>Agenda</h1>
+  <p class="intro muted">
+    Four blocks. Each combines explanation, live programming and a guided challenge. Times are
+    guidance: if a block is extended, it is cut from the next challenge, not from rest.
+  </p>
+  <Agenda detailed />
+</Base>
+
+<style>
+  h1 {
+    font-size: clamp(2.5rem, 7vw, 4rem);
+    margin-block: 0.5rem 1.25rem;
+  }
+
+  .intro {
+    max-width: 60ch;
+    margin-bottom: 3rem;
+  }
+</style>

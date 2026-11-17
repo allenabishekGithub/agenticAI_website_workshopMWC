@@ -1,0 +1,421 @@
+---
+import { Code } from 'astro:components';
+import ApiTester from '../components/ApiTester.astro';
+import { TOKEN_DEL_TALLER } from '../data/taller';
+import Base from '../layouts/Base.astro';
+
+const theme = 'css-variables';
+
+// Examples always point to the "Drink", also in local
+const origin = 'https://upskilling-mwc-taller.midudev.workers.dev';
+
+const curlJev = `curl ${origin}/api/jev \\
+  -H "Authorization: Bearer $TOKEN_DEL_TALLER" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "state": "The order was late and the box was broken.",
+    "questions": {
+      "equipo":  { "type": "choice", "instructions": "What team should attend to it?",
+                   "criteria": { "envios": "Delays and transport", "devoluciones": null, "facturacion": null } },
+      "enfado":  { "type": "score", "instructions": "How angry is the client?????.............................................:.?..?...??..??..??..?..??....??......????.....????????????????????????????",
+                   "criteria": ["Not at all", "Somewhat annoyed", "Very angry"] },
+      "urgente": { "type": "noul", "instructions": "Does it require an answer today?" }
+    }
+  }'`;
+
+const fetchJev = `const response = await fetch('${origin}/api/jev', {
+  method: 'POST',
+  headers: {
+    Authorization: \`Bearer \${TOKEN_DEL_TALLER}\`,
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({
+    state: 'The order was late and the box was broken.',
+    questions: {
+      equipo: {
+        type: 'choice',
+        instructions: 'What team should attend to it?',
+        criteria: { envios: 'Delays and transport', devoluciones: null, facturacion: null },
+      },
+      urgente: { type: 'noul', instructions: 'Does it require an answer today?' },
+    },
+  }),
+});
+
+const { answers } = await response.json();
+
+answers.equipo.choice;   // 'envios'
+answers.urgente.noul;    // 008 → probability of ‘sí»`;
+
+const responseJev = `{
+  "model": "jev-1.14.0",
+  "answers": {
+    "equipo":  { "type": "choice", "choice": "envios", "confidence": 0.97,
+                 "probabilities": { "envios": 0.97, "devoluciones": 0.03, "facturacion": 0.0 } },
+    "enfado":  { "type": "score", "score": 1.7, "confidence": 0.55,
+                 "legend": { "0": "Not at all", "1": "Somewhat annoyed", "2": "Very angry" },
+                 "probabilities": { "0": 0.1, "1": 0.1, "2": 0.8 } },
+    "urgente": { "type": "noul", "noul": 0.87 }
+  },
+  "usage": { "input_tokens": 328, "output_tokens": 34 }
+}`;
+
+const sdkJev = `// npm install @typesafe-ai/sdk
+import { TypeSafeClient, choice, score, noul } from '@typesafe-ai/sdk';
+
+const client = new TypeSafeClient({
+  apiKey: process.env.TOKEN_DEL_TALLER,
+  baseURL: '${origin}/api/jev',
+});
+
+const { answers } = await client.systemOne({
+  state: { review: 'He came in fast, but the size is huge.' },
+  questions: {
+    tema: choice('What\'s the review about?', { envio: null, talla: null, calidad: null }),
+    nota: score('What would you give her?', ['Bad', 'Average', 'Good']),
+    spam: noul('Is it spam or advertising?'),
+  },
+});
+
+console.log(answers.tema.choice, answers.nota.score, answers.spam.noul);`;
+
+const sdkOpenAI = `// npm install openai
+import OpenAI from 'openai';
+
+const openai = new OpenAI({
+  apiKey: process.env.TOKEN_DEL_TALLER,
+  baseURL: '${origin}/api/openai/v1',
+});
+
+const completion = await openai.chat.completions.create({
+  model: 'gpt-6-luna',
+  messages: [
+    { role: 'system', content: 'You\'re an assistant at an online store.' },
+    { role: 'user', content: 'Recommend a gift for less than € 30.' },
+  ],
+});
+
+console.log(completion.choices[0].message.content);`;
+
+const fetchOpenAI = `const response = await fetch('${origin}/api/openai/v1/chat/completions', {
+  method: 'POST',
+  headers: {
+    Authorization: \`Bearer \${TOKEN_DEL_TALLER}\`,
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({
+    model: 'gpt-6-luna',
+    messages: [{ role: 'user', content: 'Say hello in a sentence.' }],
+  }),
+});
+
+const data = await response.json();
+console.log(data.choices[0].message.content);`;
+
+// If compiled without WORKSHOP_TOKEN in.dev.vars, the examples show a marker
+const token = TOKEN_DEL_TALLER || 'TU_TOKEN';
+
+const envExample = `# .env
+TOKEN_DEL_TALLER=${token}`;
+
+// Example bodies of the "Prove" buttons (Editables on page)
+const bodyJev = {
+  state: 'The order was late and the box was broken.',
+  questions: {
+    equipo: {
+      type: 'choice',
+      instructions: 'What team should attend to it?',
+      criteria: { envios: 'Delays and transport', devoluciones: null, facturacion: null },
+    },
+    enfado: {
+      type: 'score',
+      instructions: 'How angry is the client?????.............................................:.?..?...??..??..??..?..??....??......????.....????????????????????????????',
+      criteria: ['Not at all', 'Somewhat annoyed', 'Very angry'],
+    },
+    urgente: { type: 'noul', instructions: 'Does it require an answer today?' },
+  },
+};
+
+const bodyChat = {
+  model: 'gpt-6-luna',
+  messages: [
+    { role: 'system', content: 'You\'re the assistant to an online store.' },
+    { role: 'user', content: 'Recommend a gift for less than € 30.' },
+  ],
+};
+
+const bodyResponses = {
+  model: 'gpt-6-luna',
+  input: 'Say hello in a sentence.',
+};
+---
+
+<Base title="Workshop APIs" description="APIs from Jev and OpenAI already configured to be used during the workshop.">
+  <p class="label">Already configured · without registering anywhere</p>
+  <h1>APIs</h1>
+  <p class="intro muted">
+    During the workshop you have two APIs ready to use with a single token: <strong>Jev</strong> (decisiones
+    (structured) and <strong>OpenAI</strong> (text generation). Each of the
+    button <strong>Try</strong> to see the actual answer without writing code. The token stops working when the
+    session.
+  </p>
+
+  <div class="token">
+    <p class="label" id="token-label">Workshop token</p>
+    {
+      TOKEN_DEL_TALLER ? (
+        <div class="token-row">
+          <code>{TOKEN_DEL_TALLER}</code>
+          <button type="button" data-copy={TOKEN_DEL_TALLER}>Copy</button>
+        </div>
+      ) : (
+        <p class="muted">You'll see it at the workshop presentation.</p>
+      )
+    }
+  </div>
+
+  <dl class="facts">
+    <div>
+      <dt>Authentication</dt>
+      <dd><code>Authorization: Bearer {token}</code></dd>
+    </div>
+    <div>
+      <dt>Limit</dt>
+      <dd>300 requests every 10 s per network (the Wi-Fi of the workshop counts as one) · 256 KB per request</dd>
+    </div>
+    <div>
+      <dt>CORS</dt>
+      <dd>Open: you can call them from the browser</dd>
+    </div>
+  </dl>
+
+  <Code code={envExample} lang="bash" theme={theme} />
+
+  <h2 id="jev"><span class="accent">01</span> Jev</h2>
+  <p>
+    Jev does not generate text: answers questions about content (<code>state</code>) with data your code uses
+    One single call can take several questions.
+  </p>
+
+  <table>
+    <thead>
+      <tr><th>Tipo</th><th>What it is for</th><th>Response</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>choice</code></td>
+        <td>Choose an option from several</td>
+        <td><code>choice</code>, <code>confidence</code>, <code>probabilities</code></td>
+      </tr>
+      <tr>
+        <td><code>score</code></td>
+        <td>Score on an orderly scale (2-10 levels)</td>
+        <td><code>score</code> (media ponderada), <code>confidence</code></td>
+      </tr>
+      <tr>
+        <td><code>noul</code></td>
+        <td>Yes or no</td>
+        <td><code>noul</code>: probability of ‘yes’ from 0 to 1</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="endpoints">
+    <ApiTester method="POST" path="/api/jev" origin={origin} body={bodyJev} />
+    <ApiTester method="GET" path="/api/jev/v1/models" origin={origin} />
+  </div>
+
+  <h3>With fetch</h3>
+  <Code code={fetchJev} lang="js" theme={theme} />
+
+  <h3>Response</h3>
+  <Code code={responseJev} lang="json" theme={theme} />
+
+  <h3>With the official SDK</h3>
+  <p>
+    Change the <code>baseURL</code> and use the workshop token as <code>apiKey</code>In the browser adds
+    <code>dangerouslyAllowBrowser: true</code>.
+  </p>
+  <Code code={sdkJev} lang="js" theme={theme} />
+
+  <h3>With curl</h3>
+  <Code code={curlJev} lang="bash" theme={theme} />
+
+  <p class="muted">
+    If you don't indicate <code>model</code> used <code>jev-latest</code>. Complete documentation:
+    <a href="https://docs.typesafe.ai">docs.typesafe.ai</a>.
+  </p>
+
+  <h2 id="openai"><span class="accent">02</span> OpenAI</h2>
+  <p>
+    The SDK is the official OpenAI with the only change in the <code>baseURL</code>. Supports streaming. Model
+    available: <code>gpt-6-luna</code> (used by default if you do not indicate any).
+  </p>
+
+  <div class="endpoints">
+    <ApiTester method="POST" path="/api/openai/v1/chat/completions" origin={origin} body={bodyChat} />
+    <ApiTester method="POST" path="/api/openai/v1/responses" origin={origin} body={bodyResponses} />
+    <ApiTester method="GET" path="/api/openai/v1/models" origin={origin} />
+  </div>
+  <p class="muted hint">Add <code>"stream": true</code> to the body to see the answer come live.</p>
+
+  <h3>With the official SDK</h3>
+  <Code code={sdkOpenAI} lang="js" theme={theme} />
+
+  <h3>With fetch</h3>
+  <Code code={fetchOpenAI} lang="js" theme={theme} />
+
+  <h2>Errors</h2>
+  <table>
+    <tbody>
+      <tr><td><code>401</code></td><td>The token missing from the workshop or invalid</td></tr>
+      <tr><td><code>400</code></td><td>Invalid JSON or model not allowed</td></tr>
+      <tr><td><code>413</code></td><td>Request exceeds 256 KB</td></tr>
+      <tr><td><code>429</code></td><td>The network has exceeded 300 requests in 10 s (the limit is shared with the room): wait a few seconds</td></tr>
+    </tbody>
+  </table>
+</Base>
+
+
+<style>
+  h1 {
+    font-size: clamp(2.5rem, 7vw, 4rem);
+    margin-block: 0.5rem 1.25rem;
+  }
+
+  .intro {
+    max-width: 62ch;
+    margin-bottom: 2.5rem;
+  }
+
+  .intro strong {
+    color: var(--fg);
+    font-weight: 500;
+  }
+
+  h2 {
+    font-size: 2rem;
+    margin-block: 4rem 1rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--line);
+  }
+
+  h3 {
+    font-size: 1.15rem;
+    margin-block: 2rem 0.75rem;
+  }
+
+  p {
+    max-width: 68ch;
+    margin-bottom: 1.1rem;
+  }
+
+  :global(pre) {
+    margin-bottom: 1.25rem;
+  }
+
+  dl {
+    margin: 0 0 1.5rem;
+  }
+
+  dl div {
+    display: grid;
+    grid-template-columns: 9rem 1fr;
+    gap: 1rem;
+    padding-block: 0.55rem;
+    border-top: 1px solid var(--line);
+  }
+
+  dl div:last-child {
+    border-bottom: 1px solid var(--line);
+  }
+
+  dt {
+    color: var(--muted);
+    font-size: 0.87rem;
+  }
+
+  dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .token {
+    margin-bottom: 2.5rem;
+    padding: 1.1rem 1.25rem;
+    border: 1px solid var(--accent);
+    border-radius: 6px;
+    background: var(--surface);
+  }
+
+  .token-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem 1.5rem;
+    margin-top: 0.35rem;
+  }
+
+  .token code {
+    font-family: var(--pixel);
+    font-size: clamp(1.4rem, 5vw, 2.1rem);
+    border: 0;
+    padding: 0;
+    background: none;
+    overflow-wrap: anywhere;
+  }
+
+  .token button {
+    font: inherit;
+    font-size: 0.87rem;
+    color: #fff;
+    background: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: 4px;
+    padding: 0.35rem 0.9rem;
+    cursor: pointer;
+  }
+
+  .token button:hover {
+    filter: brightness(1.1);
+  }
+
+  .endpoints {
+    margin-bottom: 1.5rem;
+  }
+
+  .hint {
+    font-size: 0.87rem;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 1.5rem;
+    font-size: 0.9rem;
+  }
+
+  th,
+  td {
+    text-align: left;
+    padding: 0.55rem 0.75rem 0.55rem 0;
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+  }
+
+  th {
+    color: var(--muted);
+    font-weight: 400;
+  }
+</style>
+
+<script>
+  for (const button of document.querySelectorAll<HTMLButtonElement>('[data-copy]')) {
+    button.addEventListener('click', async () => {
+      await navigator.clipboard.writeText(button.dataset.copy ?? '');
+      button.textContent = 'Copied';
+      setTimeout(() => (button.textContent = 'Copy'), 1500);
+    });
+  }
+</script>

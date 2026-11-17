@@ -1,0 +1,130 @@
+---
+import { Font } from 'astro:assets';
+import '../styles/global.css';
+
+interface Props {
+  title?: string;
+  description?: string;
+}
+
+const SITE = 'AI-ready websites';
+const { title, description = 'Practical workshop: MCP UI, WebMCP, Jev and local AI in the browser. Upskilling Week Barcelona.' } =
+  Astro.props;
+
+const links = [
+  { href: '/', text: 'Home' },
+  { href: '/agenda', text: 'Agenda' },
+  { href: '/retos', text: 'Exercises' },
+  { href: '/directo', text: 'Live demos' },
+  { href: '/apis', text: 'APIs' },
+  { href: '/slides', text: 'Slides' },
+];
+
+// With a build.format: 'file' the Portamei arrives as /index.html or /agenda.html
+const path = Astro.url.pathname.replace(/(\/index)?\.html$|\/$/, '') || '/';
+const isCurrent = (href: string) => (href === '/' ? path === '/' : path.startsWith(href));
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    {/* First in <head>: start the font preloads before anything else */}
+    <Font cssVariable="--font-pixel" preload />
+    <Font cssVariable="--font-mono" preload />
+    <meta name="description" content={description} />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>{title ? `${title} · ${SITE}` : SITE}</title>
+    <slot name="head" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="/">mwc<span class="accent">/</span>workshop</a>
+      <nav aria-label="Main">
+        {
+          links.map(({ href, text }) => (
+            <a href={href} aria-current={isCurrent(href) ? 'page' : undefined}>
+              {text}
+            </a>
+          ))
+        }
+      </nav>
+    </header>
+
+    <main>
+      <slot />
+    </main>
+
+    <footer class="site-footer">
+      <span>Upskilling Week Barcelona · Mobile World Capital</span>
+      <span>Miguel Ángel Durán · <a href="https://midu.dev">midudev</a></span>
+    </footer>
+  </body>
+</html>
+
+<style>
+  .site-header,
+  main,
+  .site-footer {
+    width: min(100% - 3rem, 860px);
+    margin-inline: auto;
+  }
+
+  .site-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5rem 2rem;
+    padding-block: 1.75rem;
+  }
+
+  .brand {
+    font-family: var(--pixel);
+    font-size: 1.15rem;
+    text-decoration: none;
+  }
+
+  .brand:hover {
+    color: var(--fg);
+  }
+
+  nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 1.5rem;
+    font-size: 0.87rem;
+  }
+
+  nav a {
+    color: var(--muted);
+    text-decoration: none;
+  }
+
+  nav a:hover,
+  nav a[aria-current='page'] {
+    color: var(--fg);
+  }
+
+  nav a[aria-current='page']::before {
+    content: '▪ ';
+    color: var(--accent);
+  }
+
+  main {
+    padding-block: 3rem 5rem;
+    min-height: 70vh;
+  }
+
+  .site-footer {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 0.5rem 2rem;
+    padding-block: 1.5rem 2.5rem;
+    border-top: 1px solid var(--line);
+    font-size: 0.8rem;
+    color: var(--muted);
+  }
+</style>

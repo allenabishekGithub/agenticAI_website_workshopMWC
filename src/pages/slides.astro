@@ -1,0 +1,910 @@
+---
+import { Font } from 'astro:assets';
+import { Code } from 'astro:components';
+import PixelIcon from '../components/PixelIcon.astro';
+import type { IconName } from '../components/pixel-icons';
+import Slide from '../components/Slide.astro';
+import { schedule } from '../data/agenda';
+import { TOKEN_DEL_TALLER } from '../data/taller';
+import '../styles/global.css';
+import '../styles/slides.css';
+
+const theme = 'css-variables';
+const tokenSlide = TOKEN_DEL_TALLER || 'WORKSHOP_TOKEN missing in.dev.vars';
+
+// The same icons as on the web cover
+const blockIcons: IconName[] = ['mcp-ui', 'webmcp', 'jev', 'ia-local'];
+
+const agendaIcon = (item: (typeof schedule)[number]): IconName => {
+  if (item.block) return blockIcons[item.block - 1];
+  if (item.kind === 'intro') return 'flag';
+  if (item.kind === 'break') return 'coffee';
+  return item === schedule.at(-1) ? 'ask' : 'cart';
+};
+const B1 = 'Section 1 · MCP UI';
+const B2 = 'Section 2 · WebMCP';
+const B3 = 'Section 3 · Jev';
+const B4 = 'Section 4 · Local AI';
+
+const mcpBasic = `server.registerTool(
+  'ver_equipo',
+  {
+    description: 'Position, latest results and next match of a LaLiga team',
+    inputSchema: z.object({
+      equipo: z.string().describe('Name or nickname: "Barça", "Atleti".'),
+    }),
+  },
+  async ({ equipo }) => {
+    const ficha = await verEquipo(equipo); // JavaScript normal: call the API
+    return {
+      content: [{ type: 'text', text: resumen(ficha) }], // text for the model
+    };
+  },
+);`;
+
+const mcpServer = `registerAppTool(                 // before: Server.registerTool(
+  server,
+  'ver_equipo',
+  {
+    description: 'Position, latest results and next match of a LaLiga team',
+    inputSchema: z.object({ equipo: z.string() }),
+    _meta: { ui: { resourceUri: 'ui://laliga/vista.html' } },  // nuevo
+  },
+  async ({ equipo }) => {
+    const ficha = await verEquipo(equipo);
+    return {
+      content: [{ type: 'text', text: resumen(ficha) }], // for the model
+      structuredContent: { equipo: ficha },               // new: for the view
+    };
+  },
+);`;
+
+const mcpResource = `registerAppResource(
+  server,
+  'LaLiga',
+  'ui://laliga/vista.html',
+  {},
+  async () => ({
+    contents: [{
+      uri: 'ui://laliga/vista.html',
+      mimeType: RESOURCE_MIME_TYPE,   // text/html;profile=mcp-app
+      text: await crearVista(),       // a unique HTML with its CSS and JS
+      // The frame only carries what you allow: here, the shields
+      _meta: { ui: { csp: { resourceDomains: ['https://a.espncdn.com'] } } },
+    }],
+  }),
+);`;
+
+const mcpView = `import { App } from '@modelcontextprotocol/ext-apps';
+const app = new App({ name: 'LaLiga', version: '1.0.0' });
+
+// client → view: the result of the tool arrives
+app.addEventListener('toolresult', ({ structuredContent }) => {
+  pintar(structuredContent); // the table, day or date
+});
+
+// view → server: click on a computer, without going through the model
+$tabla.addEventListener('click', async (evento) => {
+  const { equipo } = evento.target.closest('[data-equipo]').dataset;
+  const resultado = await app.callServerTool({ name: 'ver_equipo', arguments: { equipo } });
+  pintar(resultado.structuredContent);
+});
+
+await app.connect();`;
+
+const webmcpTool = `await document.modelContext.registerTool({
+  name: 'anadir_al_carrito',
+  description: 'Add a product to your cart. Return your cart and the total in euros.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      id: { type: 'string', description: 'Product identifier' },
+      cantidad: { type: 'integer', minimum: 1 },
+    },
+    required: ['id'],
+  },
+  execute({ id, cantidad = 1 }) {
+    return añadirAlCarrito(id, cantidad);
+  },
+});`;
+
+const webmcpForm = `<form
+  toolname="suscribir_ofertas"
+  tooldescription="Suscribe an email to the notices of offers in a category"
+>
+  <input type="email" name="email" required
+         toolparamdescription="User e-mail" />
+
+  <select name="categoria" required>…</select>
+
+  <button>Notify me</button>
+</form>`;
+
+const webmcpHints = `annotations: {
+  readOnlyHint:,, // read only, does not change anything
+  untrustedContentHint: true, // returns third-party text (resistances)
+  consequentialHint: true, // hard to undo: request confirmation
+}`;
+
+const jevRequest = `const respuesta = await fetch(\`\${API_URL}/api/jev\`, {
+  method: 'POST',
+  headers: { Authorization: \`Bearer \${TOKEN}\`, 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    State: { review: 'It was late and the box was broken. I never buy again.'},
+    questions: {
+      theme: {e.g.: '00}, "What is it about?",
+                 criteria: { producto: null, envio: null, otro: null } },
+      note: {number: score, }flashers: 'What do you think?',
+                 criteria: ['Bad', 'Average', 'Good'] },
+      urgent: {number: noul, }, }Was there an answer today? },
+    },
+  }),
+});`;
+
+const jevResponse = `{
+  "answers": {
+    "tema":    { "choice": "envio", "confidence": 0.97,
+                 "probabilities": { "producto": 0.02, "envio": 0.97, "otro": 0.01 } },
+    "nota":    { "score": 0.1, "confidence": 0.9 },
+    "urgente": { "noul": 0.84 }
+  },
+  "usage": { "input_tokens": 212, "output_tokens": 30 }
+}`;
+
+const jevCode = `const { answers } = await respuesta.json();
+
+if (answers.urgente.noul > 0.8) avisarAlEquipo();
+
+if (answers.tema.choice === 'envio') abrirIncidencia('logística');
+
+estrellas = Math.round(answers.nota.score) + 1;`;
+
+const localSummarizer = `const idioma = { expectedInputLanguages: ['en'], outputLanguage: 'en' };
+
+if ((await Summarizer.availability(idioma)) !== 'unavailable') {
+  const summarizer = await Summarizer.create({
+    ...idioma,
+    type: 'tldr',
+    length: 'short',
+    monitor(m) {
+      m.addEventListener('downloadprogress', (e) => console.log(e.loaded));
+    },
+  });
+
+  const article = document.querySelector('article').innerText;
+  let summary = '';
+
+  for await (const trozo of summarizer.summarizeStreaming(article)) {
+    summary += trozo;
+  }
+
+  console.log(summary);
+}`;
+
+const localPrompt = `const sesion = await LanguageModel.create({
+  initialPrompts: [{ role: 'system', content: 'You\'re analyzing reviews of a store.' }],
+});
+
+const respuesta = await sesion.prompt('This product is a poop', {
+  responseConstraint: {
+    type: 'object',
+    properties: {
+      pros: { type: 'array', items: { type: 'string' } },
+      contras: { type: 'array', items: { type: 'string' } },
+    },
+  },
+});
+
+const { pros, contras } = JSON.parse(respuesta);
+
+console.log('Pros:', pros);
+console.log('Contras:', contras);`;
+
+const localWebgpu = `import { pipeline } from '@huggingface/transformers';
+
+const generador = await pipeline(
+  'text-generation',
+  'onnx-community/Qwen3.5-0.8B-Text-ONNX',
+  {
+    device: navigator.gpu ? 'webgpu' : 'wasm',
+    dtype: 'q4f16',                    // 470 MB that downloads user
+    progress_callback: mostrarProgreso,
+  },
+);
+
+const salida = await generador(mensajes, { max_new_tokens: 120 });`;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    {/* First in <head>: start the font preloads before anything else */}
+    <Font cssVariable="--font-pixel" preload />
+    <Font cssVariable="--font-mono" preload />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>Slides · Webs ready with AI</title>
+  </head>
+  <body>
+    <main id="deck" class="deck" aria-live="polite">
+      <!-- ─────────────── Apertura ─────────────── -->
+      <Slide
+        kind="image"
+        src="/slides/portada.png"
+        alt="Ups KILLING WEATER Barcelona. 15:00 – 18:00. Midudev. Webs is listed with the AI: MCP UI, WebMCP, Jev and local AI in the browser."
+      />
+
+      <Slide kind="statement">
+        <div class="split">
+          <div>
+            <p class="big">Hola, soy <span class="accent">midudev</span></p>
+            <p class="sub">Miguel Ángel Durán · Software developer and programmer</p>
+          </div>
+          <img class="avatar" src="/slides/midudev-pixel.png" alt="Portrait of the Middle-Side in Pachel art" width="64" height="64" />
+        </div>
+      </Slide>
+
+      <Slide kind="statement">
+        <p class="big">AI agents don't just talk anymore.</p>
+        <p class="big"><span class="accent">Navegan</span>, usan <span class="accent">tools</span> and <span class="accent">act</span> on behalf of the user.</p>
+        <div class="icon-row">
+          <PixelIcon name="browser" size={128} />
+          <PixelIcon name="tool" size={128} />
+          <PixelIcon name="cursor" size={128} />
+        </div>
+      </Slide>
+
+      <Slide kind="statement">
+        <div class="split">
+          <p class="big">
+            Is your website<br />prepared for<br />a user who<br /><span class="accent">It's not a person.</span>?
+          </p>
+          <div class="not-human">
+            <PixelIcon name="robot" size={384} class="hero blink" />
+            {/* We turned the usual captcha around. */}
+            <p class="captcha">
+              <span class="tick"><PixelIcon name="check" size={48} /></span>
+              I'm a robot.
+            </p>
+          </div>
+        </div>
+      </Slide>
+
+      <Slide title="Today we built a store for agents.">
+        <ol class="cards four">
+          <li><div class="card-top"><span class="n">01</span><PixelIcon name="mcp-ui" size={80} /></div><h3>MCP UI</h3><p>The catalog, as an interface within the chat</p></li>
+          <li><div class="card-top"><span class="n">02</span><PixelIcon name="webmcp" size={80} /></div><h3>WebMCP</h3><p>Web exposes tools to browser agents</p></li>
+          <li><div class="card-top"><span class="n">03</span><PixelIcon name="jev" size={80} /></div><h3>Jev</h3><p>Quick decisions that code uses as it is</p></li>
+          <li><div class="card-top"><span class="n">04</span><PixelIcon name="ia-local" size={80} /></div><h3>Local AI</h3><p>Models running in the browser</p></li>
+        </ol>
+        <p class="foot">Explanation → live code → guided challenge. So four times.</p>
+      </Slide>
+
+      <Slide title="Agenda">
+        <ol class="agenda">
+          {
+            schedule.map((item) => (
+              <li class={item.kind}>
+                <PixelIcon name={agendaIcon(item)} size={48} />
+                <span class="time">{item.start}</span>
+                <span class="what">
+                  {item.block && <span class="accent">{item.block} · </span>}
+                  {item.title}
+                </span>
+                <span class="min">{item.minutes} min</span>
+              </li>
+            ))
+          }
+        </ol>
+      </Slide>
+
+      <Slide title="Before you start">
+        <div class="split">
+          <ol class="steps">
+            <li><span class="n">1</span><div><h3>Clone the repository</h3><p><code>git clone https://github.com/midudev/upskilling-mwc-taller</code><br /><code>cd upskilling-mwc-taller</code></p></div></li>
+            <li><span class="n">2</span><div><h3>Opens the workshop website</h3><p>Agenda, exercises and documentation of the APIs</p></div></li>
+            <li><span class="n">3</span><div><h3>Note down the token</h3><p>One key for Jev and OpenAI. Caduca at the end.</p></div></li>
+            <li><span class="n">4</span><div><h3>Check</h3><p>Chrome actualizado · Node.js 22+ · <code>node -v</code></p></div></li>
+          </ol>
+          <figure class="qr">
+            <img src="/slides/qr-taller.svg" alt="QR code of the workshop repository" width="29" height="29" />
+            <figcaption><code>midu.link/taller</code></figcaption>
+          </figure>
+        </div>
+      </Slide>
+
+      <Slide kind="statement" label="Workshop token">
+        <p class="big token" style={`--chars: ${tokenSlide.length}`}>{tokenSlide}</p>
+        <p class="sub">A single key for Jev and OpenAI. Stick it in <code>retos/config.js</code>It serves all exercises.</p>
+      </Slide>
+
+      <!-- ~ ~ ~ ~ Block 1 · MCP UI ~ ~ ~ ~ ~ ~ ~ Block 1 · MCP UI ~ -->
+      <Slide kind="section" label="Block 1 · 15:10">
+        <div class="split">
+          <div>
+            <p class="num">01</p>
+            <h2>MCP UI</h2>
+            <p class="sub">Interactive chats within the chat</p>
+          </div>
+          <PixelIcon name="mcp-ui" size={384} class="hero" />
+        </div>
+      </Slide>
+
+      <Slide kind="statement" label={B1}>
+        <p class="big">MCP: a common language between AI and <span class="accent">your code</span>.</p>
+        <p class="sub">Model: An open standard: you write the server once and it works on Claude, ChatGPT, VS Code, Cursor.</p>
+        <div class="icon-row">
+          <PixelIcon name="chat" size={128} />
+          <PixelIcon name="arrows" size={96} />
+          <PixelIcon name="server" size={128} />
+        </div>
+      </Slide>
+
+      <Slide label={B1} title="The pieces">
+        <div class="flow chain">
+          <div class="box"><PixelIcon name="chat" size={80} /><h3>Client</h3><p>Claude, ChatGPT, VS Code... with their model</p></div>
+          <div class="arrow"><PixelIcon name="arrows" size={80} /><span>JSON-RPC</span></div>
+          <div class="box hl"><PixelIcon name="server" size={80} /><h3>MCP server</h3><p>Your code</p></div>
+          <div class="arrow"><PixelIcon name="arrows" size={80} /><span>fetch, SQL…</span></div>
+          <div class="box"><PixelIcon name="cloud" size={80} /><h3>Your details</h3><p>APIs, database, files</p></div>
+        </div>
+        <p class="foot">In local (stdio) or remote (HTTP). The model never touches your API: only use what the server offers you.</p>
+      </Slide>
+
+      <Slide label={B1} title="What a server can offer">
+        <ul class="cards three">
+          <li><div class="card-top"><span class="n">decides the model</span><PixelIcon name="tool" size={80} /></div><h3>Tools</h3><p>Actions that the model executes when it needs them</p><p class="eg"><code>ver_equipo("Barça")</code></p></li>
+          <li><div class="card-top"><span class="n">The app decides</span><PixelIcon name="doc" size={80} /></div><h3>Resources</h3><p>Data that the client reads and adds to the context</p><p class="eg"><code>ui://laliga/vista.html</code></p></li>
+          <li><div class="card-top"><span class="n">decides the user</span><PixelIcon name="terminal" size={80} /></div><h3>Prompts</h3><p>Templates the user chooses, such as a command</p><p class="eg"><code>/resumen-jornada</code></p></li>
+        </ul>
+        <p class="foot">Today, especially in the case of the "Vulfur" and a very special resource: <span class="accent">ui://</span></p>
+      </Slide>
+
+      <Slide label={B1} title="What happens when you ask">
+        <ol class="steps">
+          <li><span class="n">1</span><PixelIcon name="doc" size={80} /><div><h3>Customer asks for tools</h3><p><code>tools/list</code>: name, description and outline of each</p></div></li>
+          <li><span class="n">2</span><PixelIcon name="chat" size={80} /><div><h3>User asks</h3><p>«How was Barça in the last game?»</p></div></li>
+          <li><span class="n">3</span><PixelIcon name="robot" size={80} class="blink" /><div><h3>The model chooses tool and arguments</h3><p><code>tools/call</code> → <code>ver_equipo({'{'} equipo: "Barça" {'}'})</code></p></div></li>
+          <li><span class="n">4</span><PixelIcon name="server" size={80} /><div><h3>Your code responds</h3><p>The server calls the API and the model writes with the result</p></div></li>
+        </ol>
+        <p class="foot">The model decides only with the name and description.</p>
+      </Slide>
+
+      <Slide label={B1} title="A MCP Server: a tool">
+        <Code code={mcpBasic} lang="js" theme={theme} />
+      </Slide>
+
+      <Slide label={B1} title="Live: LaLiga by MCP">
+        <ol class="steps">
+          <li><span class="n">1</span><PixelIcon name="tool" size={80} /><div><h3>Three tools</h3><p><code>ver_clasificacion</code> · <code>ver_resultados</code> · <code>ver_equipo</code></p></div></li>
+          <li><span class="n">2</span><PixelIcon name="trophy" size={80} /><div><h3>Real data</h3><p>ESPN's public API, no key</p></div></li>
+          <li><span class="n">3</span><PixelIcon name="chat" size={80} /><div><h3>We connected it to chat</h3><p>«How was Barça in the last game?»</p></div></li>
+        </ol>
+        <p class="foot"><a class="demo" href="http://localhost:3101" target="_blank" rel="noopener">Open the demo,</a>directo/liga/1-mcp · npm run dev</p>
+      </Slide>
+
+      <Slide kind="statement" label={B1}>
+        <div class="split">
+          <div>
+            <p class="big">Problem: a tool only returns <span class="accent">text</span>.</p>
+            <p class="sub">Twenty teams on a board of the gents, no shields, no colors, no touch.</p>
+          </div>
+          <PixelIcon name="doc" size={320} class="hero" />
+        </div>
+      </Slide>
+
+      <Slide label={B1} title="MCP Apps: the tool brings its interface">
+        <ol class="steps">
+          <li><span class="n">1</span><PixelIcon name="doc" size={80} /><div><h3>The tool declares a view</h3><p><code>_meta.ui.resourceUri = "ui://laliga/vista.html"</code></p></div></li>
+          <li><span class="n">2</span><PixelIcon name="robot" size={80} /><div><h3>The model calls the tool</h3><p>Text for model, view data</p></div></li>
+          <li><span class="n">3</span><PixelIcon name="browser" size={80} /><div><h3>The client paints the HTML</h3><p>In an isolated frame, inside the conversation</p></div></li>
+          <li><span class="n">4</span><PixelIcon name="arrows" size={80} /><div><h3>They talk both ways.</h3><p>View receives results and can call other tools</p></div></li>
+        </ol>
+      </Slide>
+
+      <Slide label={B1} title="Server: a tool with interface">
+        <Code code={mcpServer} lang="js" theme={theme} />
+      </Slide>
+
+      <Slide label={B1} title="Server: the resource <span class='accent'>ui://</span>">
+        <Code code={mcpResource} lang="js" theme={theme} />
+      </Slide>
+
+      <Slide label={B1} title="View: the JavaScript of the inlay">
+        <Code code={mcpView} lang="js" theme={theme} />
+      </Slide>
+
+      <Slide label={B1} title="Live: LaLiga with interface">
+        <ol class="steps">
+          <li><span class="n">1</span><PixelIcon name="tool" size={80} /><div><h3>The same tools</h3><p><code>registerAppTool</code> + <code>ui://laliga/vista.html</code></p></div></li>
+          <li><span class="n">2</span><PixelIcon name="mcp-ui" size={80} /><div><h3>Data for the view</h3><p>Table, results and team sheet with shields</p></div></li>
+          <li><span class="n">3</span><PixelIcon name="cursor" size={80} /><div><h3>View calls server</h3><p>Click on a computer → <code>ver_equipo</code>without going through the model</p></div></li>
+        </ol>
+        <p class="foot"><a class="demo" href="http://localhost:3102" target="_blank" rel="noopener">Open the demo,</a>directo/liga/2-mcp-ui · npm run dev</p>
+      </Slide>
+
+      <Slide kind="reto" label={B1}>
+        <div class="split">
+          <div>
+            <p class="num">Exercise 1</p>
+            <h2>The catalog inside the chat</h2>
+            <ul>
+              <li>Convert <code>buscar_productos</code> in an interface tool</li>
+              <li>Register the appeal <code>ui://</code></li>
+              <li>Have the Add button call the server</li>
+            </ul>
+            <p class="path">retos/01-mcp-ui/inicio · 18 min · <a href="http://localhost:3001" target="_blank" rel="noopener">localhost:3001</a></p>
+          </div>
+          <PixelIcon name="mcp-ui" size={320} class="hero" />
+        </div>
+      </Slide>
+
+      <!-- ~ ~ ~ ~ ~ Block 2 · WebMCP ~ ~ ~ ~ ~ ~ ~ -->
+      <Slide kind="section" label="Block 2 · 15:50">
+        <div class="split">
+          <div>
+            <p class="num">02</p>
+            <h2>WebMCP</h2>
+            <p class="sub">Your website, as tools for browser agents</p>
+          </div>
+          <PixelIcon name="webmcp" size={384} class="hero" />
+        </div>
+      </Slide>
+
+      <Slide label={B2} title="This is how your website uses an agent today">
+        <ol class="steps">
+          <li><span class="n">1</span><PixelIcon name="eye" size={80} /><div><h3>Makes a capture or reads the DOM</h3><p>Thousands of tokens for each step</p></div></li>
+          <li><span class="n">2</span><PixelIcon name="question" size={80} /><div><h3>Guess which button to press</h3><p>"Will this icon be the cart?"</p></div></li>
+          <li><span class="n">3</span><PixelIcon name="cursor" size={80} /><div><h3>Simulate a click and look again</h3><p>Slow, expensive and fragile</p></div></li>
+        </ol>
+        <p class="foot">You change a <code>div</code> And the agent gets lost.</p>
+      </Slide>
+
+      <Slide kind="statement" label={B2}>
+        <p class="big">WebMCP: the web <span class="accent">tells him</span> What can you do?</p>
+        <p class="sub">Your page records tools with <code>document.modelContext</code>The agent calls them: without reading the screen, without simulating clicks.</p>
+        <div class="icon-row">
+          <PixelIcon name="webmcp" size={128} />
+          <PixelIcon name="arrows" size={96} />
+          <PixelIcon name="robot" size={128} class="blink" />
+        </div>
+      </Slide>
+
+      <Slide label={B2} title="MCP and WebMCP do not compete">
+        <table class="two-lines">
+          <thead><tr><th></th><th><span class="ico"><PixelIcon name="server" size={48} />MCP</span></th><th><span class="ico"><PixelIcon name="webmcp" size={48} />WebMCP</span></th></tr></thead>
+          <tbody>
+            <tr><td>Where it lives</td><td>On a server</td><td>On the page, in the browser</td></tr>
+            <tr><td>Who uses it</td><td>Chat and IDE Assistants</td><td>Browser agents</td></tr>
+            <tr><td>Session</td><td>You manage it (OAuth...)</td><td>The user: already logged in</td></tr>
+            <tr><td>Interface</td><td>The chat (MCP Apps)</td><td>Your website, in the user's view</td></tr>
+          </tbody>
+        </table>
+      </Slide>
+
+      <Slide label={B2} title="Imperative API: <span class='accent'>registerTool</span>">
+        <Code code={webmcpTool} lang="js" theme={theme} />
+      </Slide>
+
+      <Slide label={B2} title="API declarative: a form is a tool">
+        <Code code={webmcpForm} lang="html" theme={theme} />
+        <p class="foot">The agent fills in, the user confirms. <code>toolautosubmit</code> It's sent alone.</p>
+      </Slide>
+
+      <Slide label={B2} title="Tracks for agent and browser">
+        <Code code={webmcpHints} lang="js" theme={theme} />
+        <ul class="list">
+          <li>Clear descriptions: what it does, what it returns and in what units</li>
+          <li>Returns data, not HTML. Errors, as value</li>
+          <li>Let the user see on screen what the agent does</li>
+        </ul>
+      </Slide>
+
+      <Slide label={B2} title="Current state">
+        <ul class="cards three">
+          <li><PixelIcon name="key" size={80} /><h3>Origin trial</h3><p>In Chrome and Edge. It's not stable yet.</p></li>
+          <li><PixelIcon name="flask" size={80} /><h3>Locally</h3><p><code>chrome://flags/</code><br /><code>#enable-webmcp-testing</code></p></li>
+          <li><PixelIcon name="search" size={80} /><h3>To try it</h3><p>DevTools → Application → WebMCP</p></li>
+        </ul>
+        <p class="foot">It's a progressive improvement: if the browser doesn't have it, your website works the same way.</p>
+      </Slide>
+
+      <Slide label={B2} title="Live tickets to Camp Nou">
+        <ol class="steps">
+          <li><span class="n">1</span><PixelIcon name="webmcp" size={80} /><div><h3>A form is a tool</h3><p><code>toolname="reservar_entradas_camp_nou"</code></p></div></li>
+          <li><span class="n">2</span><PixelIcon name="chat" size={80} /><div><h3>You're asking the assistant.</h3><p>«Two tickets for the next match, the cheapest»</p></div></li>
+          <li><span class="n">3</span><PixelIcon name="check" size={80} /><div><h3>The agent fills in, you confirm</h3><p>Without reading the screen or simulating clicks</p></div></li>
+        </ol>
+        <p class="foot"><a class="demo" href="/directo/entradas" target="_blank" rel="noopener">Open the demo,</a>/directo/entradas</p>
+      </Slide>
+
+      <Slide kind="reto" label={B2}>
+        <div class="split">
+          <div>
+            <p class="num">Exercise 2</p>
+            <h2>The store opens to agents</h2>
+            <ul>
+              <li>Record <code>buscar_productos</code>, <code>anadir_al_carrito</code>, <code>ver_producto</code> and <code>vaciar_carrito</code></li>
+              <li>Adds the annotations you play</li>
+              <li>Convert the offer form into a tool</li>
+            </ul>
+            <p class="path">retos/02-webmcp/inicio · 17 min</p>
+          </div>
+          <PixelIcon name="webmcp" size={320} class="hero" />
+        </div>
+      </Slide>
+
+      <Slide kind="statement">
+        <div class="split">
+          <div>
+            <p class="num">16:25</p>
+            <p class="big">Break</p>
+            <p class="sub">10 minutes, we'll be back at 16:35.</p>
+          </div>
+          <PixelIcon name="coffee" size={384} class="hero steam" />
+        </div>
+      </Slide>
+
+      <!-- ~ ~ ~ ~ ~ Block 3 · Jev ~ ~ ~ ~ ~ ~ ~ -->
+      <Slide kind="section" label="Block 3 · 16:35">
+        <div class="split">
+          <div>
+            <p class="num">03</p>
+            <h2>Jev</h2>
+            <p class="sub">Quick and structured decisions</p>
+          </div>
+          <PixelIcon name="jev" size={384} class="hero" />
+        </div>
+      </Slide>
+
+      <Slide label={B3} title="You don't always want the model to write">
+        <ul class="list big-list icon-list">
+          <li><PixelIcon name="toggle" size={96} />Is this review spam?</li>
+          <li><PixelIcon name="jev" size={96} />What team is this ticket going to?</li>
+          <li><PixelIcon name="score" size={96} />How much does this product fit with what the customer is looking for?</li>
+        </ul>
+        <p class="foot">With a generative model: "Send with JSON only"... wait, parse and cross your fingers.</p>
+      </Slide>
+
+      <Slide label={B3} title="Jev answers questions, does not write text">
+        <ul class="cards three">
+          <li><div class="card-top"><span class="n">choice</span><PixelIcon name="jev" size={80} /></div><h3>Choose</h3><p>One option between several, with the probability of each</p></li>
+          <li><div class="card-top"><span class="n">score</span><PixelIcon name="score" size={80} /></div><h3>Score</h3><p>A position on a scale that you define</p></li>
+          <li><div class="card-top"><span class="n">noul</span><PixelIcon name="toggle" size={80} /></div><h3>Yes or no</h3><p>The probability of ‘yes’ from 0 to 1</p></li>
+        </ul>
+        <p class="foot">A content (<code>state</code>) + several questions (<code>questions</code>) = one call only.</p>
+      </Slide>
+
+      <Slide label={B3} title="The request">
+        <Code code={jevRequest} lang="js" theme={theme} />
+      </Slide>
+
+      <Slide label={B3} title="The response">
+        <Code code={jevResponse} lang="json" theme={theme} />
+      </Slide>
+
+      <Slide label={B3} title="The code decides with numbers">
+        <Code code={jevCode} lang="js" theme={theme} />
+        <p class="foot">You choose the threshold according to what it takes to make mistakes.</p>
+      </Slide>
+
+      <Slide label={B3} title="When to use it">
+        <div class="cols">
+          <div>
+            <h3 class="accent ico"><PixelIcon name="check" size={64} />Yes</h3>
+            <ul class="list">
+              <li>Sort and Route</li>
+              <li>Moderate content</li>
+              <li>Sort and Recommend</li>
+              <li>validate before acting</li>
+            </ul>
+          </div>
+          <div>
+            <h3 class="muted ico"><PixelIcon name="cross" size={64} />No</h3>
+            <ul class="list">
+              <li>Write text</li>
+              <li>Chat</li>
+              <li>Reason in multiple steps</li>
+            </ul>
+          </div>
+        </div>
+      </Slide>
+
+      <Slide label={B3} title="Live: the first decision">
+        <ol class="steps">
+          <li><span class="n">1</span><PixelIcon name="question" size={80} /><div><h3>One question: what is it about?</h3><p><code>choice</code>: shipping, return, payment, product or spam</p></div></li>
+          <li><span class="n">2</span><PixelIcon name="score" size={80} /><div><h3>More questions, one call</h3><p><code>noul</code>Is it urgent? <code>score</code>: How angry?</p></div></li>
+          <li><span class="n">3</span><PixelIcon name="check" size={80} /><div><h3>The code decides with numbers</h3><p><code>if (urgente.noul &gt; 0.7)</code></p></div></li>
+        </ol>
+        <p class="foot"><a class="demo" href="/directo/clasificar" target="_blank" rel="noopener">Open the demo,</a>directo/jev/clasificar.js</p>
+      </Slide>
+
+      <Slide label={B3} title="Live: Jev plays Super Mario Bros.">
+        <ol class="steps">
+          <li><span class="n">1</span><PixelIcon name="eye" size={80} /><div><h3>Read the RAM game</h3><p>Floor, holes and enemies in a JSON</p></div></li>
+          <li><span class="n">2</span><PixelIcon name="jev" size={80} /><div><h3>Four questions on a call</h3><p>Action, focus, jump now? and danger</p></div></li>
+          <li><span class="n">3</span><PixelIcon name="terminal" size={80} /><div><h3>Code plays</h3><p>The chosen action becomes buttons, a text to a text</p></div></li>
+        </ol>
+        <p class="foot"><a class="demo" href="/directo/mario" target="_blank" rel="noopener">Open the demo,</a>/directo/mario</p>
+      </Slide>
+
+      <Slide kind="reto" label={B3}>
+        <div class="split">
+          <div>
+            <p class="num">Exercise 3</p>
+            <h2>A store that decides</h2>
+            <ul>
+              <li>Smart Search: A Question <code>score</code> by product</li>
+              <li>Reviewing with <code>noul</code>, <code>choice</code> and <code>score</code></li>
+              <li>Extra: expose as a WebMCP tool</li>
+            </ul>
+            <p class="path">retos/03-jev/inicio · 15 min</p>
+          </div>
+          <PixelIcon name="jev" size={320} class="hero" />
+        </div>
+      </Slide>
+
+      <!-- ~ ~ ~ ~ ~ Block 4 · Local AI ~ ~ ~ ~ ~ -->
+      <Slide kind="section" label="Block 4 · 17:05">
+        <div class="split">
+          <div>
+            <p class="num">04</p>
+            <h2>Local AI</h2>
+            <p class="sub">The model runs in the browser</p>
+          </div>
+          <PixelIcon name="ia-local" size={384} class="hero" />
+        </div>
+      </Slide>
+
+      <Slide label={B4} title="Why run locally?">
+        <ul class="cards three">
+          <li><PixelIcon name="lock" size={80} /><h3>Privacy</h3><p>Data does not leave the device</p></li>
+          <li><PixelIcon name="coin" size={80} /><h3>Cost</h3><p>Zero per request. No key API.</p></li>
+          <li><PixelIcon name="plane" size={80} /><h3>Offline</h3><p>It works on an airplane</p></li>
+        </ul>
+      </Slide>
+
+      <Slide label={B4} title="Two approaches">
+        <div class="cols">
+          <div class="box">
+            <PixelIcon name="browser-ai" size={96} />
+            <h3>APIs integrated Chrome</h3>
+            <p>Gemini Nano within the browser. Chrome downloads and manages the model.</p>
+            <p class="muted">Summarizer · Prompt · Translator · Language Detector</p>
+          </div>
+          <div class="box">
+            <PixelIcon name="gpu" size={96} />
+            <h3>WebGPU + Transformers.js</h3>
+            <p>You choose the model. It runs on the user's GPU.</p>
+            <p class="muted">Any ONNX model from Hugging Face</p>
+          </div>
+        </div>
+      </Slide>
+
+      <Slide label={B4} title="Summarizer API">
+        <Code code={localSummarizer} lang="js" theme={theme} class="dense" />
+      </Slide>
+
+      <Slide label={B4} title="Prompt API: JSON garantizado">
+        <Code code={localPrompt} lang="js" theme={theme} class="dense" />
+      </Slide>
+
+      <Slide label={B4} title="Plan B: WebGPU">
+        <Code code={localWebgpu} lang="js" theme={theme} />
+      </Slide>
+
+      <Slide label={B4} title="The limitations">
+        <div class="split">
+          <ul class="list big-list">
+            <li>Desktop, hardware only Chrome: 22 GB disk, GPU with 4 GB</li>
+            <li>The first time you have to download the model</li>
+            <li>Small models: tasks limited, not reasoning</li>
+            <li>You always need a plan B.</li>
+          </ul>
+          <PixelIcon name="warning" size={256} class="hero" />
+        </div>
+      </Slide>
+
+      <Slide label={B4} title="Local or cloud?">
+        <table>
+          <thead><tr><th></th><th><span class="ico"><PixelIcon name="ia-local" size={48} />Local</span></th><th><span class="ico"><PixelIcon name="cloud" size={48} />Cloud</span></th></tr></thead>
+          <tbody>
+            <tr><td>Privacy</td><td>It's not leaving the device.</td><td>Travels to a third party</td></tr>
+            <tr><td>Cost</td><td>Zero per request</td><td>Per token</td></tr>
+            <tr><td>Calidad</td><td>Tareas acotadas</td><td>The best models</td></tr>
+            <tr><td>Primera vez</td><td>Model download</td><td>Inmediato</td></tr>
+            <tr><td>Compatibility</td><td>Depends on the device</td><td>Cualquiera</td></tr>
+          </tbody>
+        </table>
+      </Slide>
+
+      <Slide label={B4} title="Live: summarize in the browser">
+        <ol class="steps">
+          <li><span class="n">1</span><PixelIcon name="ia-local" size={80} /><div><h3>Is the model available?</h3><p><code>Summarizer.availability()</code></p></div></li>
+          <li><span class="n">2</span><PixelIcon name="download" size={80} /><div><h3>Downloaded once</h3><p><code>Summarizer.create()</code> Progress</p></div></li>
+          <li><span class="n">3</span><PixelIcon name="doc" size={80} /><div><h3>Beirut streaming</h3><p><code>summarizeStreaming()</code>: text does not leave the device</p></div></li>
+        </ol>
+        <p class="foot"><a class="demo" href="/directo/resumir" target="_blank" rel="noopener">Open the demo,</a>/directo/resumir</p>
+      </Slide>
+
+      <Slide kind="reto" label={B4}>
+        <div class="split">
+          <div>
+            <p class="num">Exercise 4</p>
+            <h2>Summary reviews without leaving the browser</h2>
+            <ul>
+              <li>Check availability of <code>Summarizer</code></li>
+              <li>Stream the summary, with download progress</li>
+              <li>Extra: pros and cons in JSON with Prompt API</li>
+            </ul>
+            <p class="path">retos/04-ia-local/inicio · 17 min</p>
+          </div>
+          <PixelIcon name="ia-local" size={320} class="hero" />
+        </div>
+      </Slide>
+
+      <!-- ─────────────── Cierre ─────────────── -->
+      <Slide title="All four pieces, together">
+        <ol class="cards four">
+          <li><div class="card-top"><span class="n">01</span><PixelIcon name="mcp-ui" size={80} /></div><h3>MCP UI</h3><p>Catalogue appears in the wizard chat</p></li>
+          <li><div class="card-top"><span class="n">02</span><PixelIcon name="webmcp" size={80} /></div><h3>WebMCP</h3><p>The browser agent searches and fills the cart</p></li>
+          <li><div class="card-top"><span class="n">03</span><PixelIcon name="jev" size={80} /></div><h3>Jev</h3><p>The store recommends and roughs in milliseconds</p></li>
+          <li><div class="card-top"><span class="n">04</span><PixelIcon name="ia-local" size={80} /></div><h3>Local AI</h3><p>The reviews are summarized on the device</p></li>
+        </ol>
+        <p class="foot">Same store, ready for people and agents.</p>
+      </Slide>
+
+      <Slide title="When do I use each?">
+        <table class="when">
+          <tbody>
+            <tr><td>I want to be inside ChatGPT, Claude or IDE</td><td class="accent"><span class="ico"><PixelIcon name="mcp-ui" size={48} />MCP UI</span></td></tr>
+            <tr><td>I want the agents to use my website well.</td><td class="accent"><span class="ico"><PixelIcon name="webmcp" size={48} />WebMCP</span></td></tr>
+            <tr><td>My code needs a decision, not a text.</td><td class="accent"><span class="ico"><PixelIcon name="jev" size={48} />Jev</span></td></tr>
+            <tr><td>Sensitive data, small tasks, no cost</td><td class="accent"><span class="ico"><PixelIcon name="ia-local" size={48} />Local AI</span></td></tr>
+            <tr><td>Razonar, redactar, mucho contexto</td><td class="muted"><span class="ico"><PixelIcon name="cloud" size={48} />A LLM in the cloud</span></td></tr>
+          </tbody>
+        </table>
+      </Slide>
+
+      <Slide title="To continue">
+        <ul class="links">
+          <li><span class="ico"><PixelIcon name="mcp-ui" size={48} />MCP Apps</span><code>modelcontextprotocol.io</code></li>
+          <li><span class="ico"><PixelIcon name="webmcp" size={48} />WebMCP</span><code>developer.chrome.com/docs/ai/webmcp</code></li>
+          <li><span class="ico"><PixelIcon name="jev" size={48} />Jev</span><code>docs.typesafe.ai</code></li>
+          <li><span class="ico"><PixelIcon name="browser-ai" size={48} />Built-in AI</span><code>developer.chrome.com/docs/ai/built-in</code></li>
+          <li><span class="ico"><PixelIcon name="gpu" size={48} />Transformers.js</span><code>huggingface.co/docs/transformers.js</code></li>
+        </ul>
+        <p class="foot">The repository and this web stay with you.</p>
+      </Slide>
+
+      <Slide kind="statement">
+        <div class="split">
+          <div>
+            <p class="big">Questions?</p>
+            <p class="sub"><span class="accent">@midudev</span> · midu.dev</p>
+          </div>
+          <div class="asker">
+            <img class="avatar" src="/slides/midudev-pixel.png" alt="" width="64" height="64" />
+            <PixelIcon name="ask" size={176} class="bubble" />
+          </div>
+        </div>
+      </Slide>
+
+      <Slide
+        kind="image"
+        src="/slides/feedback.png"
+        alt="rick for come! # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #"
+      />
+    </main>
+
+    <footer class="hud" aria-hidden="true">
+      <span id="clock"></span>
+      <span id="section"></span>
+      <span id="counter"></span>
+    </footer>
+    <div class="progress" aria-hidden="true"><div id="bar"></div></div>
+
+    <script>
+      const deck = document.querySelector<HTMLElement>('#deck')!;
+      const slides = [...deck.querySelectorAll<HTMLElement>('.slide')];
+      const counter = document.querySelector('#counter')!;
+      const section = document.querySelector('#section')!;
+      const clock = document.querySelector('#clock')!;
+      const bar = document.querySelector<HTMLElement>('#bar')!;
+      const hud = document.querySelector<HTMLElement>('.hud')!;
+
+      let current = 0;
+
+      function show(index: number) {
+        current = Math.max(0, Math.min(slides.length - 1, index));
+        slides.forEach((slide, i) => slide.classList.toggle('active', i === current));
+
+        const slide = slides[current];
+        counter.textContent = `${current + 1} / ${slides.length}`;
+        section.textContent = slide.dataset.label ?? '';
+        bar.style.width = `${((current + 1) / slides.length) * 100}%`;
+        // Full screen images are shown clean
+        hud.hidden = slide.classList.contains('image');
+        history.replaceState(null, '', `#${current + 1}`);
+      }
+
+      // The stage measures always 1920×1080 and scales to the window
+      function fit() {
+        const scale = Math.min(innerWidth / 1920, innerHeight / 1080);
+        deck.style.transform = `translate(-50%, -50%) scale(${scale})`;
+      }
+
+      function tick() {
+        clock.textContent = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+      }
+
+      addEventListener('keydown', (event) => {
+        if (event.metaKey || event.ctrlKey || event.altKey) return;
+
+        switch (event.key) {
+          case 'ArrowRight':
+          case 'ArrowDown':
+          case 'PageDown':
+          case ' ':
+          case 'Enter':
+            event.preventDefault();
+            show(current + 1);
+            break;
+          case 'ArrowLeft':
+          case 'ArrowUp':
+          case 'PageUp':
+          case 'Backspace':
+            event.preventDefault();
+            show(current - 1);
+            break;
+          case 'Home':
+            show(0);
+            break;
+          case 'End':
+            show(slides.length - 1);
+            break;
+          case 'f':
+            document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen();
+            break;
+        }
+      });
+
+      // Click on the right half: next. On the left: previous
+      addEventListener('click', (event) => {
+        if (getSelection()?.toString()) return;
+        // The links to the demos open in another tab without going beyond slide
+        if ((event.target as Element).closest('a')) return;
+        show(current + (event.clientX > innerWidth / 2 ? 1 : -1));
+      });
+
+      // When entering, full screen. The browser only allows it after a gesture of the
+      // user, so you order with the first key or click until you get it
+      const gestures = ['pointerdown', 'keydown'] as const;
+
+      function autoFullscreen(event?: Event) {
+        // The f already alternates the full screen on its own
+        if (event instanceof KeyboardEvent && event.key === 'f') return;
+        if (document.fullscreenElement) return;
+        document.documentElement.requestFullscreen().catch(() => {});
+      }
+
+      for (const gesture of gestures) addEventListener(gesture, autoFullscreen);
+      // As soon as you enter (by whatever means) stop insisting: if you go out with Esc, it is respected
+      addEventListener(
+        'fullscreenchange',
+        () => gestures.forEach((gesture) => removeEventListener(gesture, autoFullscreen)),
+        { once: true },
+      );
+      autoFullscreen();
+
+      addEventListener('resize', fit);
+      addEventListener('hashchange', () => show(Number(location.hash.slice(1)) - 1 || 0));
+
+      fit();
+      tick();
+      setInterval(tick, 10_000);
+      show(Number(location.hash.slice(1)) - 1 || 0);
+    </script>
+  </body>
+</html>
